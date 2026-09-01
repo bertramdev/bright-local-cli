@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -15,16 +16,24 @@ import (
 )
 
 func newLocationsCmd() *cobra.Command {
-	cmd := &cobra.Command{Use: "locations", Short: "Read BrightLocal locations"}
+	cmd := &cobra.Command{Use: "locations", Short: "Manage BrightLocal locations"}
 	cmd.AddCommand(newListCmd("list", "List locations", "/manage/v1/locations"))
 	cmd.AddCommand(newGetCmd("get <location-id>", "Get a location", "/manage/v1/locations/"))
+	cmd.AddCommand(
+		newWriteCmd("create", "Create a location", "create", "location", "POST", "/manage/v1/locations"),
+		newWriteCmd("update <location-id>", "Update a location", "update", "location", "PATCH", "/manage/v1/locations/%s"),
+	)
 	return cmd
 }
 
 func newClientsCmd() *cobra.Command {
-	cmd := &cobra.Command{Use: "clients", Short: "Read BrightLocal clients"}
+	cmd := &cobra.Command{Use: "clients", Short: "Manage BrightLocal clients"}
 	cmd.AddCommand(newListCmd("list", "List clients", "/manage/v1/clients"))
 	cmd.AddCommand(newGetCmd("get <client-id>", "Get a client", "/manage/v1/clients/"))
+	cmd.AddCommand(
+		newWriteCmd("create", "Create a client", "create", "client", "POST", "/manage/v1/clients"),
+		newWriteCmd("update <client-id>", "Update a client", "update", "client", "PATCH", "/manage/v1/clients/%s"),
+	)
 	return cmd
 }
 
@@ -227,6 +236,117 @@ func runGet(ctx context.Context, output io.Writer, path string, query url.Values
 		return err
 	}
 	return printJSON(output, body)
+}
+
+func newWriteCmd(use, short, operation, resource, method, pathTemplate string) *cobra.Command {
+	argCount := strings.Count(pathTemplate, "%s")
+	var data string
+	var confirm, dryRun bool
+	cmd := &cobra.Command{
+		Use:   use,
+		Short: short,
+		Long:  "Send a JSON request to the BrightLocal Management API. Requires --confirm unless --dry-run is used.",
+		Args:  cobra.ExactArgs(argCount),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			body, err := validateJSONObject(data)
+			if err != nil {
+				return err
+			}
+			path := pathTemplate
+			if argCount > 0 {
+				escapedArgs := make([]any, len(args))
+				for i, arg := range args {
+					escapedArgs[i] = url.PathEscape(arg)
+				}
+				path = fmt.Sprintf(pathTemplate, escapedArgs...)
+			}
+			target := resource
+			if len(args) > 0 {
+				target += " " + args[0]
+			}
+			return runWrite(cmd, method, operation, target, path, body, confirm, dryRun)
+		},
+	}
+	cmd.Flags().StringVar(&data, "data", "", "JSON request body")
+	cmd.Flags().BoolVar(&confirm, "confirm", false, "Confirm this write operation")
+	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "Show the request without sending it")
+	_ = cmd.MarkFlagRequired("data")
+	return cmd
+}
+
+func validateJSONObject(data string) ([]byte, error) {
+	body := []byte(data)
+	if path, ok := strings.CutPrefix(data, "@"); ok {
+		var err error
+		body, err = os.ReadFile(path)
+		if err != nil {
+			return nil, fmt.Errorf("read --data file: %w", err)
+		}
+	}
+	var value map[string]json.RawMessage
+	if err := json.Unmarshal(body, &value); err != nil || value == nil {
+		return nil, fmt.Errorf("--data must be a JSON object")
+	}
+	return body, nil
+}
+
+func runWrite(cmd *cobra.Command, method, operation, target, path string, body []byte, confirmed, dryRun bool) error {
+	if dryRun {
+		return printDryRun(cmd.OutOrStdout(), method, path, body)
+	}
+	if !confirmed {
+		return fmt.Errorf("refusing to %s %s without --confirm", operation, target)
+	}
+	if isInteractive(cmd.InOrStdin()) {
+		fmt.Fprintf(cmd.ErrOrStderr(), "About to %s %s. Proceed? [y/N]: ", operation, target)
+		answer, err := bufio.NewReader(cmd.InOrStdin()).ReadString('\n')
+		if err != nil && len(answer) == 0 {
+			return fmt.Errorf("read confirmation: %w", err)
+		}
+		if strings.ToLower(strings.TrimSpace(answer)) != "y" && strings.ToLower(strings.TrimSpace(answer)) != "yes" {
+			return fmt.Errorf("write cancelled")
+		}
+	}
+
+	key := apiKey
+	if key == "" {
+		key = os.Getenv("BRIGHTLOCAL_API_KEY")
+	}
+	client, err := api.New(key, baseURL, nil)
+	if err != nil {
+		return err
+	}
+	response, err := client.Write(cmd.Context(), method, path, body)
+	if err != nil {
+		return err
+	}
+	return printJSON(cmd.OutOrStdout(), response)
+}
+
+func printDryRun(output io.Writer, method, path string, body []byte) error {
+	request := struct {
+		DryRun bool            `json:"dry_run"`
+		Method string          `json:"method"`
+		Path   string          `json:"path"`
+		Body   json.RawMessage `json:"body"`
+	}{
+		DryRun: true,
+		Method: method,
+		Path:   path,
+		Body:   body,
+	}
+	encoder := json.NewEncoder(output)
+	encoder.SetIndent("", "  ")
+	return encoder.Encode(request)
+}
+
+func isInteractive(input io.Reader) bool {
+	file, ok := input.(*os.File)
+	if !ok {
+		return false
+	}
+	info, err := file.Stat()
+	return err == nil && info.Mode()&os.ModeCharDevice != 0
 }
 
 func printJSON(output io.Writer, body []byte) error {

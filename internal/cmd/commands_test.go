@@ -5,6 +5,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"os"
 	"strings"
 	"testing"
 )
@@ -119,5 +120,157 @@ func TestNewPathCmdEscapesPathAndForwardsQueries(t *testing.T) {
 	}
 	if !strings.Contains(output.String(), `"ok": true`) {
 		t.Fatalf("output = %q", output.String())
+	}
+}
+
+func TestWriteRequiresConfirmBeforeSendingRequest(t *testing.T) {
+	originalKey, originalBaseURL, originalHTTPClient := apiKey, baseURL, http.DefaultClient
+	t.Cleanup(func() {
+		apiKey, baseURL, http.DefaultClient = originalKey, originalBaseURL, originalHTTPClient
+	})
+	apiKey = "test-key"
+	baseURL = "https://api.example.test"
+	http.DefaultClient = &http.Client{Transport: roundTripperFunc(func(*http.Request) (*http.Response, error) {
+		t.Fatal("request must not be sent")
+		return nil, nil
+	})}
+
+	cmd := NewRootCmd()
+	cmd.SetArgs([]string{"clients", "create", "--data", `{"name":"Acme"}`})
+	err := cmd.Execute()
+	if err == nil || !strings.Contains(err.Error(), "without --confirm") {
+		t.Fatalf("Execute() error = %v, want missing confirmation error", err)
+	}
+}
+
+func TestWriteDryRunDoesNotRequireAPIKeyOrSendRequest(t *testing.T) {
+	originalKey, originalBaseURL, originalHTTPClient := apiKey, baseURL, http.DefaultClient
+	t.Cleanup(func() {
+		apiKey, baseURL, http.DefaultClient = originalKey, originalBaseURL, originalHTTPClient
+	})
+	apiKey = ""
+	baseURL = "https://api.example.test"
+	http.DefaultClient = &http.Client{Transport: roundTripperFunc(func(*http.Request) (*http.Response, error) {
+		t.Fatal("request must not be sent")
+		return nil, nil
+	})}
+
+	var output bytes.Buffer
+	cmd := NewRootCmd()
+	cmd.SetOut(&output)
+	cmd.SetArgs([]string{"clients", "update", "42", "--data", `{"name":"Acme"}`, "--dry-run"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	if got := output.String(); !strings.Contains(got, `"dry_run": true`) || !strings.Contains(got, `"method": "PATCH"`) || !strings.Contains(got, `"path": "/manage/v1/clients/42"`) {
+		t.Fatalf("dry-run output = %q", got)
+	}
+}
+
+func TestWriteSendsConfirmedRequest(t *testing.T) {
+	originalKey, originalBaseURL, originalHTTPClient := apiKey, baseURL, http.DefaultClient
+	t.Cleanup(func() {
+		apiKey, baseURL, http.DefaultClient = originalKey, originalBaseURL, originalHTTPClient
+	})
+	http.DefaultClient = &http.Client{Transport: roundTripperFunc(func(req *http.Request) (*http.Response, error) {
+		if got, want := req.Method, http.MethodPost; got != want {
+			t.Fatalf("method = %q, want %q", got, want)
+		}
+		if got, want := req.URL.Path, "/manage/v1/clients"; got != want {
+			t.Fatalf("path = %q, want %q", got, want)
+		}
+		return &http.Response{
+			StatusCode: http.StatusCreated,
+			Status:     "201 Created",
+			Body:       io.NopCloser(strings.NewReader(`{"message":"Created"}`)),
+			Header:     make(http.Header),
+		}, nil
+	})}
+
+	var output bytes.Buffer
+	cmd := NewRootCmd()
+	apiKey = "test-key"
+	baseURL = "https://api.example.test"
+	cmd.SetOut(&output)
+	cmd.SetIn(strings.NewReader(""))
+	cmd.SetArgs([]string{"clients", "create", "--data", `{"name":"Acme"}`, "--confirm"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(output.String(), `"message": "Created"`) {
+		t.Fatalf("output = %q", output.String())
+	}
+}
+
+func TestWriteCommandsRegistered(t *testing.T) {
+	root := NewRootCmd()
+	for _, path := range [][]string{
+		{"locations", "create"},
+		{"locations", "update"},
+		{"clients", "create"},
+		{"clients", "update"},
+	} {
+		if _, _, err := root.Find(path); err != nil {
+			t.Errorf("command %q is not registered: %v", strings.Join(path, " "), err)
+		}
+	}
+}
+
+func TestValidateJSONObject(t *testing.T) {
+	t.Parallel()
+
+	for _, data := range []string{"[]", `"string"`, "null", "{"} {
+		if _, err := validateJSONObject(data); err == nil {
+			t.Errorf("validateJSONObject(%q) error = nil", data)
+		}
+	}
+}
+
+func TestValidateJSONObjectReadsFile(t *testing.T) {
+	t.Parallel()
+
+	path := t.TempDir() + "/payload.json"
+	if err := os.WriteFile(path, []byte(`{"name":"Acme"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	body, err := validateJSONObject("@" + path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := string(body), `{"name":"Acme"}`; got != want {
+		t.Fatalf("body = %q, want %q", got, want)
+	}
+	if _, err := validateJSONObject("@" + path + ".missing"); err == nil {
+		t.Fatal("validateJSONObject() error = nil for missing file")
+	}
+}
+
+func TestLocationUpdateSendsConfirmedRequest(t *testing.T) {
+	originalKey, originalBaseURL, originalHTTPClient := apiKey, baseURL, http.DefaultClient
+	t.Cleanup(func() {
+		apiKey, baseURL, http.DefaultClient = originalKey, originalBaseURL, originalHTTPClient
+	})
+	http.DefaultClient = &http.Client{Transport: roundTripperFunc(func(req *http.Request) (*http.Response, error) {
+		if got, want := req.Method, http.MethodPatch; got != want {
+			t.Fatalf("method = %q, want %q", got, want)
+		}
+		if got, want := req.URL.EscapedPath(), "/manage/v1/locations/a%2Fb"; got != want {
+			t.Fatalf("path = %q, want %q", got, want)
+		}
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Status:     "200 OK",
+			Body:       io.NopCloser(strings.NewReader(`{"message":"Updated"}`)),
+			Header:     make(http.Header),
+		}, nil
+	})}
+
+	cmd := NewRootCmd()
+	apiKey = "test-key"
+	baseURL = "https://api.example.test"
+	cmd.SetIn(strings.NewReader(""))
+	cmd.SetArgs([]string{"locations", "update", "a/b", "--data", `{"business_name":"Acme"}`, "--confirm"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatal(err)
 	}
 }

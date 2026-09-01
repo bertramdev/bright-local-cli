@@ -16,7 +16,7 @@ func NewRootCmd() *cobra.Command {
 	root := &cobra.Command{
 		Use:   "bright-local",
 		Short: "A command-line client for BrightLocal",
-		Long:  "A safe, read-only command-line client for BrightLocal's Management API.",
+		Long:  "A command-line client for BrightLocal's Management API. Write commands require explicit confirmation.",
 	}
 	root.PersistentFlags().StringVar(&apiKey, "api-key", "", "BrightLocal API key (default: BRIGHTLOCAL_API_KEY)")
 	root.PersistentFlags().StringVar(&baseURL, "base-url", "https://api.brightlocal.com", "BrightLocal API base URL")

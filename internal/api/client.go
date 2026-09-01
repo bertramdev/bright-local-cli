@@ -73,9 +73,53 @@ func (c *Client) Get(ctx context.Context, path string, query url.Values) ([]byte
 	return body, nil
 }
 
+// Write sends a supported Management API mutation with a JSON request body.
+func (c *Client) Write(ctx context.Context, method, path string, body []byte) ([]byte, error) {
+	if method != http.MethodPost && method != http.MethodPatch {
+		return nil, fmt.Errorf("unsupported write method %q", method)
+	}
+
+	path, err := managementPath(path)
+	if err != nil {
+		return nil, err
+	}
+
+	escapedPath := strings.TrimRight(c.baseURL.EscapedPath(), "/") + path
+	decodedPath, err := url.PathUnescape(escapedPath)
+	if err != nil {
+		return nil, fmt.Errorf("invalid API path: %w", err)
+	}
+	u := *c.baseURL
+	u.Path = decodedPath
+	u.RawPath = escapedPath
+	req, err := http.NewRequestWithContext(ctx, method, u.String(), strings.NewReader(string(body)))
+	if err != nil {
+		return nil, fmt.Errorf("create request: %w", err)
+	}
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("x-api-key", c.apiKey)
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("request BrightLocal API: %w", err)
+	}
+	defer resp.Body.Close()
+
+	responseBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("read BrightLocal API response: %w", err)
+	}
+	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+		return nil, fmt.Errorf("BrightLocal API returned %s: %s", resp.Status, strings.TrimSpace(string(responseBody)))
+	}
+
+	return responseBody, nil
+}
+
 // managementPath rejects paths that could escape the Management API namespace
-// when converted into an HTTP request. Every command is intentionally GET-only,
-// but limiting the namespace also prevents access to legacy API endpoints.
+// when converted into an HTTP request. Limiting the namespace prevents access
+// to legacy API endpoints for both reads and supported write operations.
 func managementPath(path string) (string, error) {
 	parsed, err := url.Parse(path)
 	if err != nil {

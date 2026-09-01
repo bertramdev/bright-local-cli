@@ -54,6 +54,61 @@ func TestClientRequiresAPIKey(t *testing.T) {
 	}
 }
 
+func TestClientWrite(t *testing.T) {
+	t.Parallel()
+
+	client, err := New("test-key", "https://api.example.test", &http.Client{Transport: roundTripperFunc(func(r *http.Request) (*http.Response, error) {
+		if got, want := r.Method, http.MethodPatch; got != want {
+			t.Fatalf("method = %q, want %q", got, want)
+		}
+		if got, want := r.URL.Path, "/manage/v1/clients/42"; got != want {
+			t.Fatalf("path = %q, want %q", got, want)
+		}
+		if got := r.Header.Get("Content-Type"); got != "application/json" {
+			t.Fatalf("Content-Type = %q", got)
+		}
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got, want := string(body), `{"name":"Acme"}`; got != want {
+			t.Fatalf("body = %q, want %q", got, want)
+		}
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Status:     "200 OK",
+			Body:       io.NopCloser(strings.NewReader(`{"message":"Request successful."}`)),
+			Header:     make(http.Header),
+		}, nil
+	})})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	body, err := client.Write(context.Background(), http.MethodPatch, "/manage/v1/clients/42", []byte(`{"name":"Acme"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := string(body), `{"message":"Request successful."}`; got != want {
+		t.Fatalf("body = %q, want %q", got, want)
+	}
+}
+
+func TestClientWriteRejectsUnsupportedMethodBeforeRequest(t *testing.T) {
+	t.Parallel()
+
+	client, err := New("test-key", "https://api.example.test", &http.Client{Transport: roundTripperFunc(func(*http.Request) (*http.Response, error) {
+		t.Fatal("request must not be sent")
+		return nil, nil
+	})})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := client.Write(context.Background(), http.MethodDelete, "/manage/v1/clients/42", []byte(`{}`)); err == nil {
+		t.Fatal("Write() error = nil")
+	}
+}
+
 func TestClientRejectsPathTraversalBeforeRequest(t *testing.T) {
 	t.Parallel()
 
