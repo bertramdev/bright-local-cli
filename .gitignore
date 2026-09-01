@@ -1,0 +1,17 @@
+# Build artifacts
+bright-local
+bright-local.exe
+*.exe
+*.test
+*.out
+coverage.out
+
+# Local credentials and tooling
+.env
+.env.local
+.firecrawl/
+
+# Editor and OS files
+.vscode/
+.idea/
+.DS_Store
