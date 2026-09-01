@@ -9,7 +9,7 @@ It starts with the daily account lookups most useful from a terminal: locations,
 Requires Go 1.26 or later.
 
 ```sh
-go install github.com/bertramdev/bright-local-cli@latest
+go install github.com/tomleelong/bright-local-cli@latest
 ```
 
 Or, from this directory:
@@ -86,3 +86,7 @@ Create and update commands send the documented JSON payload supplied via `--data
 go test ./...
 go run . --help
 ```
+
+## License
+
+Licensed under the [Apache License 2.0](LICENSE).
