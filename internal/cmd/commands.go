@@ -28,6 +28,70 @@ func newClientsCmd() *cobra.Command {
 	return cmd
 }
 
+func newRankTrackerCmd() *cobra.Command {
+	cmd := &cobra.Command{Use: "rank-tracker", Short: "Read Local Rank Tracker reports"}
+	reports := &cobra.Command{Use: "reports", Short: "Read Local Rank Tracker reports"}
+	reports.AddCommand(
+		newPathCmd("list", "List rank-tracker reports", "/manage/v1/lrt/reports"),
+		newPathCmd("get <report-id>", "Get a rank-tracker report", "/manage/v1/lrt/reports/%s"),
+		newPathCmd("history <report-id>", "Get rank-tracker report history", "/manage/v1/lrt/reports/%s/history"),
+		newPathCmd("result <report-id>", "Get the latest rank-tracker report result", "/manage/v1/lrt/reports/%s/result"),
+	)
+	cmd.AddCommand(reports)
+	return cmd
+}
+
+func newSearchGridCmd() *cobra.Command {
+	cmd := &cobra.Command{Use: "search-grid", Short: "Read Local Search Grid reports and rankings"}
+	reports := &cobra.Command{Use: "reports", Short: "Read Local Search Grid reports"}
+	reports.AddCommand(
+		newPathCmd("list", "List search-grid reports", "/manage/v1/lsg/reports"),
+		newPathCmd("get <report-id>", "Get a search-grid report", "/manage/v1/lsg/reports/%s"),
+	)
+	runs := &cobra.Command{Use: "runs", Short: "Read Local Search Grid report runs"}
+	runs.AddCommand(
+		newPathCmd("list <report-id> <keyword-id>", "List runs for a keyword", "/manage/v1/lsg/reports/%s/keywords/%s/runs"),
+		newPathCmd("get <report-id> <run-id> <keyword-id>", "Get a keyword run", "/manage/v1/lsg/reports/%s/runs/%s/keywords/%s"),
+	)
+	rankings := &cobra.Command{Use: "rankings", Short: "Read Local Search Grid rankings"}
+	rankings.AddCommand(
+		newPathCmd("competitors <report-id> <run-id> <keyword-id>", "List competitors for a keyword run", "/manage/v1/lsg/reports/%s/runs/%s/keywords/%s/competitors"),
+		newPathCmd("competitor <report-id> <run-id> <keyword-id> <competitor-id>", "Get competitor rankings", "/manage/v1/lsg/reports/%s/runs/%s/keywords/%s/competitors/%s"),
+	)
+	cmd.AddCommand(reports, runs, rankings)
+	return cmd
+}
+
+func newReputationCmd() *cobra.Command {
+	cmd := &cobra.Command{Use: "reputation", Short: "Read Reputation Manager reports and reviews"}
+	reports := &cobra.Command{Use: "reports", Short: "Read Reputation Manager reports"}
+	reports.AddCommand(
+		newPathCmd("list", "List reputation reports", "/manage/v1/rm/reports"),
+		newPathCmd("get <report-id>", "Get a reputation report", "/manage/v1/rm/reports/%s"),
+		newPathCmd("reviews <report-id>", "Get reviews for a reputation report", "/manage/v1/rm/reports/%s/reviews"),
+	)
+	cmd.AddCommand(reports)
+	return cmd
+}
+
+func newCitationBuilderCmd() *cobra.Command {
+	cmd := &cobra.Command{Use: "citation-builder", Short: "Read Citation Builder campaigns"}
+	cmd.AddCommand(
+		newPathCmd("list", "List Citation Builder campaigns", "/manage/v1/citation-builder"),
+		newPathCmd("get <campaign-id>", "Get a Citation Builder campaign", "/manage/v1/citation-builder/%s"),
+	)
+	return cmd
+}
+
+func newReferenceCmd() *cobra.Command {
+	cmd := &cobra.Command{Use: "reference", Short: "Read BrightLocal reference data"}
+	cmd.AddCommand(
+		newPathCmd("time-options", "Get available time options", "/manage/v1/time-options"),
+		newPathCmd("white-label-profiles", "List white-label profiles", "/manage/v1/white-label-profiles"),
+	)
+	return cmd
+}
+
 func newCategoriesCmd() *cobra.Command {
 	var query string
 	cmd := &cobra.Command{
@@ -120,6 +184,33 @@ func newGetCmd(use, short, pathPrefix string) *cobra.Command {
 			return runGet(cmd.Context(), cmd.OutOrStdout(), pathPrefix+url.PathEscape(args[0]), nil)
 		},
 	}
+}
+
+func newPathCmd(use, short, pathTemplate string) *cobra.Command {
+	argCount := strings.Count(pathTemplate, "%s")
+	cmd := &cobra.Command{
+		Use:   use,
+		Short: short,
+		Args:  cobra.ExactArgs(argCount),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			escapedArgs := make([]any, len(args))
+			for i, arg := range args {
+				escapedArgs[i] = url.PathEscape(arg)
+			}
+			path := fmt.Sprintf(pathTemplate, escapedArgs...)
+			values, err := cmd.Flags().GetStringArray("query")
+			if err != nil {
+				return err
+			}
+			query, err := parseQuery(values)
+			if err != nil {
+				return err
+			}
+			return runGet(cmd.Context(), cmd.OutOrStdout(), path, query)
+		},
+	}
+	cmd.Flags().StringArrayP("query", "q", nil, "Query parameter in key=value form (repeatable)")
+	return cmd
 }
 
 func runGet(ctx context.Context, output io.Writer, path string, query url.Values) error {

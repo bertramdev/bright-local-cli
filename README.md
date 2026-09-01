@@ -44,6 +44,14 @@ bright-local categories US --query "plumber"
 
 # Access other documented read-only Management API endpoints
 bright-local api get /manage/v1/clients --query page=2 --query num_per_page=50
+
+# Read report and ranking data
+bright-local rank-tracker reports history REPORT_ID --query page=1
+bright-local search-grid runs list REPORT_ID KEYWORD_ID --query filter=active
+bright-local search-grid rankings competitor REPORT_ID RUN_ID KEYWORD_ID COMPETITOR_ID
+bright-local reputation reports reviews REPORT_ID
+bright-local citation-builder list
+bright-local reference time-options
 ```
 
 ## Commands
@@ -55,6 +63,12 @@ bright-local api get /manage/v1/clients --query page=2 --query num_per_page=50
 | `clients list` | List clients, with paging, search, and type filtering. |
 | `clients get <client-id>` | Get one client. |
 | `categories <country>` | List business categories for a country. |
+| `rank-tracker reports ...` | List reports and read rank-tracker history/results. |
+| `search-grid reports\|runs\|rankings ...` | Read Local Search Grid reports, runs, competitors, and rankings. |
+| `reputation reports ...` | List reports and read reputation reviews. |
+| `citation-builder list\|get ...` | List or read Citation Builder campaigns. |
+| `reference time-options` | Read available time options. |
+| `reference white-label-profiles` | List white-label profiles. |
 | `api get <path>` | GET another documented `/manage/v1/` endpoint. |
 
 The CLI intentionally performs no create, update, or delete operations.

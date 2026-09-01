@@ -21,7 +21,17 @@ func NewRootCmd() *cobra.Command {
 	root.PersistentFlags().StringVar(&apiKey, "api-key", "", "BrightLocal API key (default: BRIGHTLOCAL_API_KEY)")
 	root.PersistentFlags().StringVar(&baseURL, "base-url", "https://api.brightlocal.com", "BrightLocal API base URL")
 	_ = root.PersistentFlags().MarkHidden("base-url")
-	root.AddCommand(newLocationsCmd(), newClientsCmd(), newCategoriesCmd(), newAPICmd())
+	root.AddCommand(
+		newLocationsCmd(),
+		newClientsCmd(),
+		newCategoriesCmd(),
+		newRankTrackerCmd(),
+		newSearchGridCmd(),
+		newReputationCmd(),
+		newCitationBuilderCmd(),
+		newReferenceCmd(),
+		newAPICmd(),
+	)
 	return root
 }
 
