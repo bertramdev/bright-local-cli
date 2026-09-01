@@ -21,7 +21,7 @@
 - Authentication: `x-api-key` header from `BRIGHTLOCAL_API_KEY` or `--api-key`
 - Current commands include read-only operations plus confirmed create/update operations for clients and locations.
 - Latest feature commit: `c5f6fda`
-- Remote: public `tomleelong/bright-local-cli`, branch `main`
+- Remote: public `bertramdev/bright-local-cli`, branch `main`
 - Verification baseline: `go test ./...`, `go vet ./...`, and `git diff --check`
 
 ## Completed write support checks

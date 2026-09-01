@@ -11,7 +11,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/tomleelong/bright-local-cli/internal/api"
+	"github.com/bertramdev/bright-local-cli/internal/api"
 	"github.com/spf13/cobra"
 )
 

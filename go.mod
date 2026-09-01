@@ -1,4 +1,4 @@
-module github.com/tomleelong/bright-local-cli
+module github.com/bertramdev/bright-local-cli
 
 go 1.26.4
 

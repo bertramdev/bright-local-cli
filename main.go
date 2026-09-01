@@ -1,6 +1,6 @@
 package main
 
-import "github.com/tomleelong/bright-local-cli/internal/cmd"
+import "github.com/bertramdev/bright-local-cli/internal/cmd"
 
 func main() {
 	cmd.Execute()
